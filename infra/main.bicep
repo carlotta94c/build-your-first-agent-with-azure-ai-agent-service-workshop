@@ -6,6 +6,9 @@
 @description('Name for the AI resource and used to derive name of dependent resources.')
 param aiHubName string = 'standard-hub'
 
+param acaExists bool = false
+param allowedOrigins string = ''
+
 @description('Friendly name for your Azure AI resource')
 param aiHubFriendlyName string = 'Agents standard hub resource'
 
@@ -43,7 +46,14 @@ param modelSkuName string = 'GlobalStandard'
 param modelCapacity int = 140
 
 @description('Model deployment location. If you want to deploy an Azure AI resource/model in different location than the rest of the resources created.')
-param modelLocation string = 'eastus2'
+param modelLocation string = 'eastus'
+
+@secure()
+param chainlitAuthSecret string
+@secure()
+param literalApiKey string
+@secure()
+param agentPassword string = substring(uniqueString(subscription().subscriptionId, aiHubName, newGuid()), 0, 12)
 
 // Variables
 var name = toLower('${aiHubName}')
@@ -59,6 +69,7 @@ param aiServicesName string = 'agent-ai-services'
 // var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 4)
 param deploymentTimestamp string = utcNow('yyyyMMddHHmmss')
 var uniqueSuffix = substring(uniqueString('${resourceGroup().id}-${deploymentTimestamp}'), 0, 4)
+var resourceToken = 'a${toLower(uniqueString(subscription().subscriptionId, name, location))}'
 
 // Dependent resources for the Azure Machine Learning workspace
 module aiDependencies 'modules-basic-keys/basic-dependent-resources-keys.bicep' = {
@@ -112,17 +123,59 @@ module aiProject 'modules-basic-keys/basic-ai-project-keys.bicep' = {
   }
 }
 
-// module bingSearchGrounding 'bing-grounding.bicep' = {
-//   name: 'bing-search-grounding'
-//   params: {
-//     name: 'bing-grounding-${uniqueSuffix}'
-//     location: location
-//     bingAccountName: 'ai-${aiServicesName}-bing-grounding'
-//   }
-// }
+module bingSearchGrounding 'bing-grounding.bicep' = {
+  name: 'bing-search-grounding'
+  params: {
+  name: 'bing-grounding-${uniqueSuffix}'
+  location: location
+  bingAccountName: 'ai-${aiServicesName}-bing-grounding'
+  }
+  }
 
+module logAnalyticsWorkspace 'core/monitor/loganalytics.bicep' = {
+  name: 'loganalytics'
+  params: {
+    name: '${resourceToken}-loganalytics'
+    location: location
+    tags: tags
+  }
+}
+
+// Container apps host (including container registry)
+module containerApps 'core/host/container-apps.bicep' = {
+  name: 'container-apps'
+  params: {
+    name: 'app'
+    location: location
+    tags: tags
+    containerAppsEnvironmentName: '${resourceToken}-containerapps-env'
+    containerRegistryName: '${replace(resourceToken, '-', '')}registry'
+    logAnalyticsWorkspaceName: logAnalyticsWorkspace.outputs.name
+  }
+}
+
+// Container app frontend
+module aca 'aca.bicep' = {
+  name: 'aca'
+  params: {
+    name: replace('${take(resourceToken,19)}-ca', '--', '-')
+    location: location
+    tags: tags
+    identityName: '${resourceToken}-id-aca'
+    containerAppsEnvironmentName: containerApps.outputs.environmentName
+    containerRegistryName: containerApps.outputs.registryName
+    allowedOrigins: allowedOrigins
+    exists: acaExists
+    chainlitAuthSecret: chainlitAuthSecret
+    literalApiKey: literalApiKey
+    modelDeploymentName: modelName
+    userPassword: agentPassword
+    projectConnectionString: '${location}.api.azureml.ms;${subscription().subscriptionId};${resourceGroup().name};ai-${projectName}-${uniqueSuffix}'
+    bingConnectionName: 'groundingwithbingsearch'
+  }
+}
 
 output subscriptionId string = subscription().subscriptionId
 output resourceGroupName string = resourceGroup().name
 output aiProjectName string = 'ai-${projectName}-${uniqueSuffix}'
-// output bingGroundingName string = 'bing-grounding-${uniqueSuffix}'
+output bingGroundingName string = 'bing-grounding-${uniqueSuffix}'

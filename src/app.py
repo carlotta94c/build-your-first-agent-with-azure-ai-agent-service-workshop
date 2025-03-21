@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-TENTS_DATA_SHEET_FILE = "datasheet/contoso-tents-datasheet.pdf"
 API_DEPLOYMENT_NAME = os.getenv("MODEL_DEPLOYMENT_NAME")
 PROJECT_CONNECTION_STRING = os.environ["PROJECT_CONNECTION_STRING"]
 BING_CONNECTION_NAME = os.getenv("BING_CONNECTION_NAME")
@@ -59,10 +58,7 @@ functions = AsyncFunctionTool(
     }
 )
 
-#INSTRUCTIONS_FILE = "instructions/instructions_function_calling.txt"
-#INSTRUCTIONS_FILE = "instructions/instructions_code_interpreter.txt"
-INSTRUCTIONS_FILE = "instructions/instructions_file_search.txt"
-# INSTRUCTIONS_FILE = "instructions/instructions_bing_grounding.txt"
+INSTRUCTIONS_FILE = "instructions/instructions_bing_grounding.txt"
 
 
 async def add_agent_tools():
